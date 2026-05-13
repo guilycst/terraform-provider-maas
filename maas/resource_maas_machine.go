@@ -326,7 +326,15 @@ func resourceMachineCreate(ctx context.Context, d *schema.ResourceData, meta any
 		return resourceMachineRead(ctx, d, meta)
 	}
 
-	commissionedMachine, err := client.Machine.Commission(machine.SystemID, getMachineCommissionParams(d))
+	var commissionedMachine *entity.Machine
+
+	err = retryOnTransient(func() error {
+		var inner error
+
+		commissionedMachine, inner = client.Machine.Commission(machine.SystemID, getMachineCommissionParams(d))
+
+		return inner
+	}, 5)
 	if err != nil {
 		log.Printf("[DEBUG] Machine (%s) cleaning up trailing resources\n", machine.SystemID)
 
@@ -334,6 +342,8 @@ func resourceMachineCreate(ctx context.Context, d *schema.ResourceData, meta any
 		if errDel != nil {
 			return diag.FromErr(fmt.Errorf("error creating MAAS machine: %v;\nAdditionally, error when attempting to delete the trailing resource: %v", err, errDel))
 		}
+
+		d.SetId("")
 
 		return diag.FromErr(err)
 	}
@@ -354,7 +364,7 @@ func resourceMachineRead(ctx context.Context, d *schema.ResourceData, meta any) 
 	// Get machine
 	machine, err := client.Machine.Get(d.Id())
 	if err != nil {
-		return diag.FromErr(err)
+		return unsetIfNotFoundError(d, err)
 	}
 
 	// Set Terraform state
