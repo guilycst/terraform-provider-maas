@@ -299,6 +299,20 @@ func resourceMachineCreate(ctx context.Context, d *schema.ResourceData, meta any
 			pxeMacAddress.(string), existing.SystemID)
 
 		machine = existing
+
+		// Push the desired hostname / power configuration onto the adopted
+		// record. When MAAS auto-enrolled the machine via PXE before this
+		// Create call ran, the adopted entry has a MAAS-generated hostname
+		// ("adjective-animal") and an empty power_type/power_parameters, so
+		// MAAS cannot power-cycle the machine for commissioning. Apply the
+		// same parameters Create would have stamped, so downstream
+		// commission + waitForMachineStatus operate on a complete record.
+		updated, updateErr := client.Machine.Update(machine.SystemID, getMachineUpdateParams(d), powerParams)
+		if updateErr != nil {
+			return diag.FromErr(fmt.Errorf("adopt-by-MAC: failed to push desired state onto adopted machine %s: %w", machine.SystemID, updateErr))
+		}
+
+		machine = updated
 	}
 
 	// Save Id (commit early so non-commissioned machines are tracked).
