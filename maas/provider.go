@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/canonical/gomaasclient/client"
+	"github.com/canonical/gomaasclient/entity"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -152,7 +153,15 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (any, diag.D
 		return nil, diags
 	}
 
-	v, err := c.Version.Get()
+	var v *entity.Version
+
+	err = retryOnTransient(func() error {
+		var inner error
+
+		v, inner = c.Version.Get()
+
+		return inner
+	}, 5)
 	if err != nil {
 		diags = append(diags, diag.Diagnostic{
 			Severity: diag.Error,
